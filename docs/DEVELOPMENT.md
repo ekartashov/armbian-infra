@@ -268,6 +268,114 @@ If no file exists, the kernel cannot boot.
 
 After the `rsync` copy from the base image, the target has the same SSH host keys as the source image. `09-finalize.yml` removes existing keys and runs `ssh-keygen -A` inside chroot to generate fresh unique keys per board. If this step is skipped or fails, sshd may refuse to start or every board will share identical host keys.
 
+
+**6. `rootflags=subvol=@` silently ignored — kernel mounts btrfs top level**
+
+`boot.scr` builds `bootargs` from:
+```
+root=${rootdev} rootfstype=${rootfstype} ... ${extraargs} ${extraboardargs}
+```
+The variable `${rootflags}` is **never read**. A standalone `rootflags=subvol=@`
+line in `armbianEnv.txt` is therefore silently ignored. The kernel mounts btrfs
+subvolume ID 5 (the top level) instead of `@`. Because `${toplevelmount}/@/dev`
+does not contain device nodes, the `/dev` move in the initramfs fails and
+`run-init` cannot find `/sbin/init`, producing the full error cascade.
+
+**Fix:** embed `rootflags=subvol=@` inside `extraargs=`. `configure-boot.sh` now
+does this automatically. To verify manually:
+
+```bash
+grep '^extraargs=' /mnt/target/boot/armbianEnv.txt
+# must contain: rootflags=subvol=@
+```
+
+**Root cause in code:** `configure-boot.sh` was missing the closing `}` of the
+`set_env()` function, so all `set_env` calls below it were inside the function
+body and never ran at the top level. The extraargs injection block — added later
+to work around the boot.scr limitation — was also inside the function for the
+same reason.
+
+---
+
+## Running the Ansible Playbook Partially
+
+Ansible doesn't have named "stages" or "steps" as a built-in concept — but
+there are several ways to run only part of a playbook.
+
+### Preview all task names
+
+Before running anything, see every task name in order:
+
+```bash
+cd base/
+ansible-playbook -i "10.42.0.5," -u admin \
+  --private-key ../secrets/ssh/id_ed25519 \
+  playbooks/provision-base.yml \
+  --extra-vars "sbc_model=opi5" \
+  --list-tasks
+```
+
+### Resume from a specific task
+
+`--start-at-task` skips everything before the named task and resumes from there:
+
+```bash
+ansible-playbook -i "10.42.0.5," -u admin \
+  --private-key ../secrets/ssh/id_ed25519 \
+  playbooks/provision-base.yml \
+  --extra-vars "sbc_model=opi5" \
+  --start-at-task "Configure armbianEnv.txt"
+```
+
+> **Heads-up:** tasks that set variables (e.g. "Parse UUIDs") are also skipped
+> if they come before the resume point. Pass missing values via `--extra-vars`:
+>
+> ```bash
+> --extra-vars "sbc_model=opi5 root_uuid=<uuid> boot_uuid=<uuid> target_hostname=opi5-01"
+> ```
+>
+> Run `--list-tasks` first and check which `set_fact` tasks precede your entry
+> point.
+
+### Common partial-run scenarios
+
+| Goal | `--start-at-task` value |
+|------|------------------------|
+| Re-run boot config only | `"Configure armbianEnv.txt"` |
+| Re-run from install onward | `"Deploy image to target filesystem"` |
+| Re-run initramfs rebuild only | `"Update initramfs (ensure btrfs modules are included)"` |
+| Re-run verify + snapshot + unmount | `"Verify armbianEnv.txt configuration"` |
+
+### Interactive step-by-step
+
+Ansible pauses before each task and asks `y` (run it), `n` (skip it), or `c`
+(run all remaining without pausing):
+
+```bash
+ansible-playbook ... --step
+```
+
+### Dry run (check mode)
+
+Shows what *would* change without touching anything. Useful to verify
+`--extra-vars` are resolved correctly before a real run. Note: `shell` and
+`script` tasks that read actual system state may report incorrect results in
+check mode since nothing has actually been changed yet.
+
+```bash
+ansible-playbook ... --check
+```
+
+### Target a single board when inventory has many
+
+```bash
+ansible-playbook -i inventory/hosts.ini -u admin \
+  --private-key ../secrets/ssh/id_ed25519 \
+  playbooks/provision-base.yml \
+  --extra-vars "sbc_model=opi5" \
+  --limit "10.42.0.5"
+```
+
 ---
 
 | Phase | Tool | Notes |

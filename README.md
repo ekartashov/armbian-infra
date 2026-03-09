@@ -222,8 +222,16 @@ If `images/orangepi5/.pull-lock` exists and the version matches, the playbook st
 **Roll back a board to its golden snapshot:**
 ```bash
 ssh admin@opi5-00
-sudo btrfs subvolume snapshot /mnt/btrfs-root/snapshots/root.golden /mnt/btrfs-root/@
-# update /boot/armbianEnv.txt rootflags to point to the new subvol, then reboot
+sudo btrfs subvolume snapshot \
+  /mnt/btrfs-root/@snapshots/root.golden \
+  /mnt/btrfs-root/@-rollback
+
+# Tell the bootloader to use it — rootflags= must go inside extraargs=,
+# NOT as a standalone key (boot.scr only reads ${extraargs} into bootargs):
+sudo sed -i 's/^extraargs=.*/extraargs=rootflags=subvol=@-rollback/' \
+  /boot/armbianEnv.txt
+sudo reboot
+
 ```
 
 **Check what images are available locally:**
@@ -299,4 +307,10 @@ Re-run the playbook unchanged. The allocator treats `allocating` entries as reco
 Confirm the drive is attached and `nvme_device` in `group_vars/all.yml` matches the actual device path (`/dev/nvme0n1` is the default).
 
 **`VERIFY FAILED` in Phase 9 (armbianEnv.txt check):**
-The `configure-boot.sh` script detected a missing required key. Check that `rootfstype=btrfs`, `rootflags=subvol=...`, `rootdev=UUID=...`, and `ethaddr=<mac>` are all present in `/boot/armbianEnv.txt` on the staging root.
+The `verify-armbianenv.sh` script detected a missing or misconfigured key.
+Check `/boot/armbianEnv.txt` on the staging root — required entries are:
+`rootfstype=btrfs`, a `rootflags=subvol=@` standalone line, `rootdev=UUID=...`,
+`ethaddr=<mac>`, and **`rootflags=subvol=@` inside `extraargs=`** (the kernel
+only reads `${extraargs}`, not `${rootflags}`, so the flag must appear in both
+places). A missing `configure-boot.sh` closing `}` is the historical cause;
+re-provision with the corrected script.
