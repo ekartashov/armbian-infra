@@ -11,6 +11,9 @@ grep -q "rootfstype=btrfs"        "$env_file" || errors+=("rootfstype not set to
 grep -q "rootflags=subvol=@"      "$env_file" || errors+=("rootflags missing subvol=@")
 grep -q "rootdev=UUID="           "$env_file" || errors+=("rootdev UUID not set")
 grep -qF "ethaddr=${board_mac}"    "$env_file" || errors+=("ethaddr not fixed to ${board_mac}")
+grep -qE "^extraargs=.*\brootflags=subvol=@" "$env_file" \
+  || errors+=("rootflags=subvol=@ not found inside extraargs=")
+
 
 if [[ ${#errors[@]} -gt 0 ]]; then
   printf "VERIFY FAILED: %s\n" "${errors[@]}" >&2
