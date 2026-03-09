@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/create-user.sh — create admin user on the staged system
-set -euo pipefail
+set -xeuo pipefail
 
 staging="" user="" hash="" shell="/bin/bash" groups="sudo" pubkey=""
 while [[ $# -gt 0 ]]; do
@@ -10,13 +10,12 @@ while [[ $# -gt 0 ]]; do
     --shell)   shell="$2"; shift 2 ;;
     --groups)  groups="$2"; shift 2 ;;
     --pubkey)  pubkey="$2"; shift 2 ;;
-	--hash)    hash=$2; shift 2;;
     *) echo "unknown arg: $1" >&2; exit 1 ;;
   esac
 done
 
 # Read password hash from stdin to avoid exposing it in the process list
-# read -r hash
+read -r hash
 
 [[ -n "$staging" ]] || { echo "error: --staging required" >&2; exit 1; }
 [[ -n "$user" ]]    || { echo "error: --user required" >&2; exit 1; }

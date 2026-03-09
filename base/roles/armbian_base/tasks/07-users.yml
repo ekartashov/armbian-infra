@@ -9,15 +9,13 @@
   changed_when: false
 
 - name: Create admin user and clean up image defaults
-  ansible.builtin.shell:
-    cmd: >-
-      /tmp/create-user.sh
-      --staging {{ staging_root }}
-      --user {{ admin_user }}
-      --shell {{ admin_shell }}
-      --groups {{ admin_groups | join(',') }}
+  ansible.builtin.shell: |
+    printf '%s\n' "$ADMIN_HASH" | /tmp/create-user.sh \
+      --staging {{ staging_root }} \
+      --user {{ admin_user }} \
+      --shell {{ admin_shell }} \
+      --groups {{ admin_groups | join(',') }} \
       --pubkey "$ADMIN_PUBKEY"
-      --hash "$ADMIN_HASH"
   args:
     executable: /bin/bash
   environment:
