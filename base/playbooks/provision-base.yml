@@ -35,6 +35,14 @@
 
   pre_tasks:
     # ── Resolve admin password hash ──────────────────────────────────────
+    # Resolution cascade (first match wins):
+    #   1. --extra-vars "admin_password_hash='$6$...'"  (highest priority — explicit override)
+    #   2. secrets/password.hash on the controller      (auto-read; shared across ALL boards)
+    #   3. Interactive prompt → SHA-512 hash → saved to secrets/password.hash for future runs
+    #
+    # The hash is per-project: one file, same password for every board provisioned from this
+    # controller.  It is NOT per-host and NOT per-user.  Deleting secrets/password.hash
+    # (or running scripts/clean.sh --secrets) resets it.
     - name: Try reading password hash from secrets file
       ansible.builtin.set_fact:
         _secrets_password_hash: "{{ lookup('file', playbook_dir + '/../../secrets/password.hash', errors='ignore') | default('') }}"
@@ -42,7 +50,7 @@
       delegate_to: localhost
       become: false
       no_log: true
-      when: admin_password_hash == ""
+      when: (admin_password_hash | default('')) == ""
 
     - name: Use secrets file hash if available
       ansible.builtin.set_fact:
@@ -50,7 +58,7 @@
       run_once: true
       no_log: true
       when:
-        - admin_password_hash == ""
+        - (admin_password_hash | default('')) == ""
         - _secrets_password_hash | default('') != ""
 
     - name: Prompt for admin password if no hash available
@@ -62,7 +70,7 @@
       delegate_to: localhost
       become: false
       no_log: true
-      when: admin_password_hash == ""
+      when: (admin_password_hash | default('')) == ""
 
     - name: Hash the prompted password
       ansible.builtin.command:
@@ -76,7 +84,7 @@
       become: false
       no_log: true
       when:
-        - admin_password_hash == ""
+        - (admin_password_hash | default('')) == ""
         - _password_prompt is defined
         - _password_prompt.user_input | default('') != ""
       changed_when: false
@@ -87,7 +95,24 @@
       run_once: true
       no_log: true
       when:
-        - admin_password_hash == ""
+        - (admin_password_hash | default('')) == ""
+        - _hashed is defined
+        - _hashed.stdout | default('') != ""
+
+    - name: Save prompted password hash to secrets/password.hash for future runs
+      # Only runs when the hash was generated interactively: _hashed.stdout is only
+      # populated when the "Hash the prompted password" task ran (not skipped).
+      # If the hash came from extra-vars or the secrets file, that task is skipped and
+      # _hashed.stdout is undefined, so this task is also skipped — no spurious writes.
+      ansible.builtin.copy:
+        content: "{{ admin_password_hash }}\n"
+        dest: "{{ playbook_dir }}/../../secrets/password.hash"
+        mode: "0600"
+      run_once: true
+      delegate_to: localhost
+      become: false
+      no_log: true
+      when:
         - _hashed is defined
         - _hashed.stdout | default('') != ""
 
@@ -97,9 +122,7 @@
           No admin password hash available. Options:
           (a) run scripts/gen-password-hash.sh (writes secrets/password.hash, auto-read next run)
           (b) pass via --extra-vars "admin_password_hash='$6$...'"
-          (c) generate inline and save:
-              echo "$pass" | scripts/gen-password-hash.sh --stdout > secrets/password.hash
-      when: admin_password_hash == ""
+      when: (admin_password_hash | default('')) == ""
 
     # ── Resolve SSH public key ───────────────────────────────────────────
     - name: Try reading SSH pubkey from secrets file
@@ -108,7 +131,7 @@
       run_once: true
       delegate_to: localhost
       become: false
-      when: admin_ssh_pubkey == ""
+      when: (admin_ssh_pubkey | default('')) == ""
 
     # ── Resolve image source for pull method ─────────────────────────────
     - name: Check for local base image on controller

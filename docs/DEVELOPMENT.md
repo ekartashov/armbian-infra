@@ -106,6 +106,14 @@ Missing/offline boards that are already in the registry are ignored — we only 
 
 The admin user on both the SD bootstrap image and the final NVMe system intentionally uses the same password hash.
 
+**The hash is per-project, not per-host or per-user.** One `secrets/password.hash` file is shared across every board provisioned from the same controller directory. All boards get the same admin password.
+
+**`provision-base.yml` resolves the hash via a cascade (first match wins):**
+
+1. `--extra-vars "admin_password_hash='$6$...'"` — explicit override, highest priority.
+2. `secrets/password.hash` on the controller — auto-read if the file exists.
+3. Interactive prompt during the playbook run — the entered password is SHA-512 hashed and **automatically saved to `secrets/password.hash`** so subsequent runs skip the prompt.
+
 **`gen-password-hash.sh` is flexible — it supports several calling modes:**
 
 ```bash
