@@ -9,9 +9,37 @@
     executable: /bin/bash
   changed_when: true
 
+- name: Create essential device nodes in staging root
+  ansible.builtin.shell: |
+    set -euo pipefail
+    [[ -c {{ staging_root }}/dev/console ]] || mknod -m 622 {{ staging_root }}/dev/console c 5 1
+    [[ -c {{ staging_root }}/dev/null    ]] || mknod -m 666 {{ staging_root }}/dev/null    c 1 3
+  args:
+    executable: /bin/bash
+  changed_when: true
+
+- name: Regenerate SSH host keys
+  ansible.builtin.shell: |
+    set -euo pipefail
+    rm -f {{ staging_root }}/etc/ssh/ssh_host_*
+    chroot {{ staging_root }} ssh-keygen -A
+  args:
+    executable: /bin/bash
+  changed_when: true
+
 - name: Update initramfs (ensure btrfs modules are included)
   ansible.builtin.shell: |
     set -euo pipefail
+
+    cleanup_chroot() {
+      umount {{ staging_root }}/var/tmp 2>/dev/null || true
+      umount {{ staging_root }}/dev     2>/dev/null || true
+      umount {{ staging_root }}/sys     2>/dev/null || true
+      umount {{ staging_root }}/proc    2>/dev/null || true
+      [[ -n "${tmpdir:-}" ]] && rmdir "$tmpdir" 2>/dev/null || true
+    }
+    trap cleanup_chroot EXIT
+
     # Bind mounts needed for chroot initramfs generation
     mount --bind /proc {{ staging_root }}/proc
     mount --bind /sys  {{ staging_root }}/sys
@@ -20,13 +48,17 @@
     tmpdir=$(mktemp -d)
     mount --bind "$tmpdir" {{ staging_root }}/var/tmp
 
-    chroot {{ staging_root }} update-initramfs -u 2>&1 || true
+    # Ensure btrfs module is listed so initramfs includes it
+    grep -qxF 'btrfs' {{ staging_root }}/etc/initramfs-tools/modules \
+      || echo 'btrfs' >> {{ staging_root }}/etc/initramfs-tools/modules
 
-    umount {{ staging_root }}/var/tmp
-    rmdir "$tmpdir"
-    umount {{ staging_root }}/dev
-    umount {{ staging_root }}/sys
-    umount {{ staging_root }}/proc
+    chroot {{ staging_root }} update-initramfs -u -v 2>&1
+
+    # Verify initramfs was actually generated
+    if ! ls {{ staging_root }}/boot/initrd.img-* >/dev/null 2>&1; then
+      echo "ERROR: no initramfs found after update-initramfs" >&2
+      exit 1
+    fi
   args:
     executable: /bin/bash
   changed_when: true
@@ -53,6 +85,33 @@
   when: enable_golden_snapshot | bool
   register: _golden
   changed_when: "'created' in _golden.stdout"
+
+- name: Verify boot readiness
+  ansible.builtin.shell: |
+    set -euo pipefail
+    fail=0
+
+    ls {{ staging_root }}/boot/initrd.img-* >/dev/null 2>&1 \
+      || { echo "FAIL: no initrd.img found in /boot" >&2; fail=1; }
+    { ls {{ staging_root }}/boot/vmlinuz-* >/dev/null 2>&1 || \
+      ls {{ staging_root }}/boot/Image     >/dev/null 2>&1; } \
+      || { echo "FAIL: no kernel image found in /boot" >&2; fail=1; }
+    [[ -f {{ staging_root }}/boot/armbianEnv.txt ]] \
+      || { echo "FAIL: armbianEnv.txt missing" >&2; fail=1; }
+    [[ -s {{ staging_root }}/etc/fstab ]] \
+      || { echo "FAIL: /etc/fstab is missing or empty" >&2; fail=1; }
+    { [[ -f {{ staging_root }}/sbin/init ]] || \
+      [[ -f {{ staging_root }}/lib/systemd/systemd ]]; } \
+      || { echo "FAIL: init binary not found" >&2; fail=1; }
+
+    if [[ "$fail" -ne 0 ]]; then
+      echo "Boot readiness check FAILED — see errors above" >&2
+      exit 1
+    fi
+    echo "Boot readiness: OK"
+  args:
+    executable: /bin/bash
+  changed_when: false
 
 - name: Unmount all staging mounts
   ansible.builtin.shell: |

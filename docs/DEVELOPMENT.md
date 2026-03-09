@@ -202,7 +202,73 @@ Rockchip RK3588 boot ROM uses the first 16 MiB of SD/eMMC for bootloader stages.
 
 ---
 
-## Dependencies
+## Boot Troubleshooting
+
+### System drops into initramfs after provisioning
+
+If the board boots into an initramfs prompt with messages like:
+
+```
+mount: No such file or directory
+mount: invalid option --
+Target filesystem doesn't have requested /sbin/init.
+run-init: opening console: No such file or directory
+No init found. Try passing init= bootarg.
+(initramfs) _
+```
+
+Several issues can compound to produce this. Check them in order:
+
+**1. fstab root mount point is empty**
+
+`/etc/fstab` in the installed system must have `/` as the mount point for the root btrfs subvolume. Verify:
+
+```bash
+grep ' btrfs ' /mnt/root/etc/fstab
+```
+
+Expected output includes a line with `UUID=...   /   btrfs   subvol=@,...`. If the mount point column is blank, the `fstab.j2` template has a bug — `regex_replace('/$', '') | default('/')` produces an empty string for `/` because Jinja2's `default()` only triggers on `undefined`, not on empty strings. The fix is `default('/', true)` (the `true` parameter makes it also trigger on empty/falsy values).
+
+**2. btrfs module missing from initramfs**
+
+The initramfs must include the `btrfs` kernel module to mount the root filesystem. Check:
+
+```bash
+lsinitramfs /mnt/root/boot/initrd.img-* | grep btrfs
+```
+
+If `btrfs.ko` is not listed, `btrfs` was not in `/etc/initramfs-tools/modules` when `update-initramfs` ran. Re-provision or manually add `btrfs` to that file and run `update-initramfs -u` in chroot.
+
+**3. `/dev/console` missing in target root**
+
+`run-init: opening console: No such file or directory` means the target's `/dev/console` character device does not exist. This can happen because rsync from the base image excludes `/dev/*`. Verify:
+
+```bash
+ls -la /mnt/root/dev/console /mnt/root/dev/null
+```
+
+If missing, recreate them:
+
+```bash
+mknod -m 622 /mnt/root/dev/console c 5 1
+mknod -m 666 /mnt/root/dev/null    c 1 3
+```
+
+**4. initramfs generation failed silently**
+
+If `update-initramfs` exits non-zero but is called with `|| true`, the playbook appears to succeed but the initramfs may be absent or stale. Always verify:
+
+```bash
+ls -lh /mnt/root/boot/initrd.img-*
+```
+
+If no file exists, the kernel cannot boot.
+
+**5. SSH host keys not regenerated**
+
+After the `rsync` copy from the base image, the target has the same SSH host keys as the source image. `09-finalize.yml` removes existing keys and runs `ssh-keygen -A` inside chroot to generate fresh unique keys per board. If this step is skipped or fails, sshd may refuse to start or every board will share identical host keys.
+
+---
 
 | Phase | Tool | Notes |
 |-------|------|-------|
