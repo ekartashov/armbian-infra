@@ -22,4 +22,4 @@ secrets/
 base/inventory/hosts.ini.lock
 
 # Repo export
-repomix-output.xml
+repomix-output.*
