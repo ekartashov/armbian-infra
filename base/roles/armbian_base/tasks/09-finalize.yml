@@ -32,21 +32,8 @@
   changed_when: true
 
 - name: Verify armbianEnv.txt configuration
-  ansible.builtin.shell: |
-    set -euo pipefail
-    env_file="{{ staging_root }}/boot/armbianEnv.txt"
-    errors=()
-    grep -q "rootfstype=btrfs" "$env_file"      || errors+=("rootfstype not set to btrfs")
-    grep -q "rootflags=subvol=@" "$env_file"     || errors+=("rootflags missing subvol=@")
-    grep -q "rootdev=UUID=" "$env_file"           || errors+=("rootdev UUID not set")
-    grep -q "ethaddr={{ board_mac }}" "$env_file" || errors+=("ethaddr not fixed to {{ board_mac }}")
-    if [[ ${#errors[@]} -gt 0 ]]; then
-      printf "VERIFY FAILED: %s\n" "${errors[@]}" >&2
-      exit 1
-    fi
-    echo "OK: armbianEnv.txt verified"
-  args:
-    executable: /bin/bash
+  ansible.builtin.script:
+    cmd: "scripts/verify-armbianenv.sh {{ staging_root }}/boot/armbianEnv.txt {{ board_mac }}"
   changed_when: false
 
 - name: Take golden image snapshot
