@@ -12,10 +12,23 @@
   ansible.builtin.set_fact:
     target_hostname: "{{ _hostname_result.stdout_lines | last }}"
 
+- name: Handle already-provisioned board (exit code 2)
+  when: _hostname_result.rc == 2
+  block:
+    - name: Display already-provisioned notice
+      ansible.builtin.debug:
+        msg: >-
+          Board {{ board_mac }} is already provisioned as {{ target_hostname }}.
+          Skipping this host. To re-provision, remove the entry from
+          {{ registry_file }} and re-run the playbook.
+
+    - name: Skip remaining tasks for this host
+      ansible.builtin.meta: end_host
+
 - name: Fail if hostname allocation failed
   ansible.builtin.fail:
-    msg: "{{ _hostname_result.stderr }}"
-  when: _hostname_result.rc != 0
+    msg: "Hostname allocation failed: {{ _hostname_result.stderr }}"
+  when: _hostname_result.rc != 0 and _hostname_result.rc != 2
 
 - name: Display assigned hostname
   ansible.builtin.debug:

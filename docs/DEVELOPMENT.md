@@ -81,7 +81,9 @@ Base-36 encoding: `[0-9A-Z][0-9A-Z]` = 1296 unique hosts per model. Format: `opi
 
 If a previously-provisioned MAC connects and the playbook runs again, `allocate-hostname.sh` exits with code 2 and prints the existing hostname on stdout.
 
-**Current behavior:** `02-hostname.yml` treats any non-zero exit code as failure (`when: _hostname_result.rc != 0`), so a re-run against an already-provisioned board will **hard-fail** at the hostname step. This is safe — it prevents accidental re-provisioning — but the error message comes from stderr and may be confusing. A future improvement would be to handle exit code 2 explicitly as a graceful "already provisioned" abort rather than a failure.
+**Current behavior:** `02-hostname.yml` detects exit code 2 and ends the play for that host gracefully using `ansible.builtin.meta: end_host`. A human-readable debug message is printed showing the existing hostname and how to force re-provisioning. The board is **not** re-provisioned and no error is raised — the playbook simply moves on to the next host.
+
+To force re-provisioning of an already-provisioned board, remove or update its entry in `{{ registry_file }}` (typically `base/inventory/hosts.ini`) and re-run the playbook. A future improvement could add a `--extra-vars force_reprovision=true` flag to override this check without manual registry edits.
 
 Missing/offline boards that are already in the registry are ignored — we only look up the MAC of the host we're currently talking to.
 
