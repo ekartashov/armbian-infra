@@ -7,7 +7,6 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --staging) staging="$2"; shift 2 ;;
     --user)    user="$2"; shift 2 ;;
-    --hash)    hash="$2"; shift 2 ;;
     --shell)   shell="$2"; shift 2 ;;
     --groups)  groups="$2"; shift 2 ;;
     --pubkey)  pubkey="$2"; shift 2 ;;
@@ -15,9 +14,12 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+# Read password hash from stdin to avoid exposing it in the process list
+read -r hash
+
 [[ -n "$staging" ]] || { echo "error: --staging required" >&2; exit 1; }
 [[ -n "$user" ]]    || { echo "error: --user required" >&2; exit 1; }
-[[ -n "$hash" ]]    || { echo "error: --hash required" >&2; exit 1; }
+[[ -n "$hash" ]]    || { echo "error: password hash required (pass via stdin)" >&2; exit 1; }
 
 uid=1000
 gid=1000

@@ -34,12 +34,14 @@
       run_once: true
       delegate_to: localhost
       become: false
+      no_log: true
       when: admin_password_hash == ""
 
     - name: Use secrets file hash if available
       ansible.builtin.set_fact:
         admin_password_hash: "{{ _secrets_password_hash }}"
       run_once: true
+      no_log: true
       when:
         - admin_password_hash == ""
         - _secrets_password_hash | default('') != ""
@@ -52,6 +54,7 @@
       run_once: true
       delegate_to: localhost
       become: false
+      no_log: true
       when: admin_password_hash == ""
 
     - name: Hash the prompted password
@@ -73,6 +76,7 @@
       ansible.builtin.set_fact:
         admin_password_hash: "{{ _hashed.stdout }}"
       run_once: true
+      no_log: true
       when:
         - admin_password_hash == ""
         - _hashed is defined

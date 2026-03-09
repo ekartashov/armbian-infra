@@ -89,6 +89,17 @@ Missing/offline boards that are already in the registry are ignored — we only 
 
 ## Base Phase (Ansible)
 
+### Password hash — shared with the patch stage
+
+`secrets/password.hash` is generated once by `scripts/gen-password-hash.sh` and is **shared between both pipeline stages**:
+
+- **patch stage** (`patch-image.sh`) — sets the password for the bootstrap SD-card user.
+- **base stage** (`provision-base.yml`) — sets the admin user password on the NVMe-installed system.
+
+The admin user on both the SD bootstrap image and the final NVMe system intentionally uses the same password hash. Run `gen-password-hash.sh` once before either stage.
+
+The hash is passed to `create-user.sh` via **stdin** (not as a CLI argument) to prevent it from appearing in the process list (`/proc/*/cmdline`, `ps aux`). The calling Ansible task uses `no_log: true` for the same reason.
+
 ### Phase 5: Image source optimization
 
 When `install_method=pull`, the playbook first checks if the controller already has the base image from the bootstrap build stage (`images/<board>/.pull-lock` + the actual `.img.xz` file). If it exists and the version matches (or no version is pinned), the image is streamed from the controller to the target via Ansible's `copy` module — no re-download needed. Falls back to direct download on the target using the URL from `.pull-lock`.

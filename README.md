@@ -106,7 +106,7 @@ ansible-playbook -i "10.42.0.5," -u admin \
 # 1. One-time setup
 ./scripts/setup-gpg-key.sh
 ./scripts/gen-ssh-keypair.sh
-./scripts/gen-password-hash.sh
+./scripts/gen-password-hash.sh   # used by BOTH the patch stage and Ansible base stage
 
 # 2. Pull + patch the bootstrap image
 ./scripts/pull-image.sh --board orangepi5
