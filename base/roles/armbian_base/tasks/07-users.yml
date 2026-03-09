@@ -2,15 +2,17 @@
 # roles/armbian_base/tasks/07-users.yml
 
 - name: Create admin user and clean up image defaults
-  ansible.builtin.script:
-    cmd: >-
-      scripts/create-user.sh
-      --staging '{{ staging_root }}'
-      --user '{{ admin_user }}'
-      --hash '{{ admin_password_hash }}'
-      --shell '{{ admin_shell }}'
-      --groups '{{ admin_groups | join(",") }}'
-      --pubkey '{{ admin_ssh_pubkey }}'
+  ansible.builtin.shell: |
+    {{ role_path }}/scripts/create-user.sh \
+      --staging '{{ staging_root }}' \
+      --user '{{ admin_user }}' \
+      --shell '{{ admin_shell }}' \
+      --groups '{{ admin_groups | join(",") }}' \
+      --pubkey '{{ admin_ssh_pubkey }}' \
+      <<< '{{ admin_password_hash }}'
+  args:
+    executable: /bin/bash
+  no_log: true
 
 - name: Disable armbian-firstrun service
   ansible.builtin.file:
