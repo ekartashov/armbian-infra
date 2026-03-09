@@ -60,7 +60,15 @@
 
 - name: Gather MAC address fact
   ansible.builtin.set_fact:
-    board_mac: "{{ ansible_default_ipv4.macaddress | lower }}"
+    board_mac: >-
+      {{ ansible_default_ipv4.macaddress
+        | default(ansible_interfaces
+                  | map('extract', ansible_facts)
+                  | selectattr('macaddress','defined')
+                  | map(attribute='macaddress') | first)
+        | lower }}
+
+
 
 - name: Display provisioning summary
   ansible.builtin.debug:
