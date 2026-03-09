@@ -3,6 +3,6 @@
 
 UUID={{ boot_uuid }}    /boot          ext4   defaults,noatime                               0  2
 {% for sv in btrfs_subvolumes %}
-UUID={{ root_uuid }}    {{ sv.mount | regex_replace('/$', '') | default('/') }}{{ '          ' if sv.mount == '/' else '    ' }}btrfs  subvol={{ sv.name }},{{ btrfs_mount_options }}    0  0
+UUID={{ root_uuid }}    {{ sv.mount | regex_replace('/$', '') | default('/', true) }}{{ '          ' if sv.mount == '/' else '    ' }}btrfs  subvol={{ sv.name }},{{ btrfs_mount_options }}    0  0
 {% endfor %}
 UUID={{ root_uuid }}    {{ btrbk_toplevel_mount }}  btrfs  subvolid=5,noatime,ssd                       0  0
