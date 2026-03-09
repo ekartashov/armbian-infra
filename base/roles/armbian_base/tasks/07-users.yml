@@ -21,7 +21,7 @@
   environment:
     ADMIN_PUBKEY: "{{ admin_ssh_pubkey }}"
     ADMIN_HASH: "{{ admin_password_hash }}"
-  no_log: false
+  no_log: true
 
 - name: Disable armbian-firstrun service
   ansible.builtin.file:
@@ -32,19 +32,6 @@
   ansible.builtin.file:
     path: "{{ staging_root }}/root/.not_logged_in_yet"
     state: absent
-
-- name: Regenerate SSH host keys
-  ansible.builtin.shell: |
-    set -euo pipefail
-    rm -f {{ staging_root }}/etc/ssh/ssh_host_*
-    chroot {{ staging_root }} dpkg-reconfigure openssh-server 2>/dev/null || {
-      for type in rsa ecdsa ed25519; do
-        ssh-keygen -t $type -f {{ staging_root }}/etc/ssh/ssh_host_${type}_key -N "" -q
-      done
-    }
-  args:
-    executable: /bin/bash
-  changed_when: true
 
 - name: Prevent firstrun from re-randomizing MAC
   ansible.builtin.copy:
