@@ -17,3 +17,6 @@ secrets/
 # Uncomment to ignore:
 # images/*/.pull-lock
 # images/patched/*.patch-lock
+
+# Transient flock(1) lock used by allocate-hostname.sh — never committed
+base/inventory/hosts.ini.lock

@@ -7,6 +7,12 @@
 # Exit 0: success (hostname on stdout)
 # Exit 1: error (message on stderr)
 # Exit 2: MAC already provisioned (hostname on stdout, message on stderr)
+#
+# Concurrency: uses flock(1) on "${registry}.lock" for mutual exclusion.
+# A tentative "allocating" entry is written to the registry before the lock
+# is released, so concurrent invocations see each other's in-progress allocation.
+# If provisioning fails after allocation, the "allocating" entry is treated the
+# same as "failed" on the next run — the board re-provisions with the same hostname.
 
 set -euo pipefail
 
@@ -46,11 +52,23 @@ b36_to_int() {
   echo $(( (hi - 1) * 36 + (lo - 1) ))
 }
 
-# ── Check registry ──────────────────────────────────────────────────────────
+# ── Check registry (with exclusive lock) ────────────────────────────────────
 
 touch "$registry"
 
-# Look for existing entry for this MAC
+# Acquire exclusive lock on the registry file for the entire read-compute-write
+# section.  This prevents two concurrent provisioning runs from computing the
+# same next ID and colliding on a hostname.
+# The .lock file persists after the script exits — this is intentional and
+# harmless (it is listed in .gitignore).  The kernel lock is released when fd 9
+# is closed (either explicitly below or automatically on script exit).
+exec 9>"${registry}.lock" \
+  || { echo "error: cannot open lock file ${registry}.lock — check directory permissions" >&2; exit 1; }
+# Ensure fd 9 is closed (and lock released) on any exit path.
+trap 'exec 9>&-' EXIT
+flock -x 9
+
+# Look for existing entry for this MAC (inside lock — authoritative read)
 existing=$(grep -i "^${mac}" "$registry" 2>/dev/null || true)
 if [[ -n "$existing" ]]; then
   existing_hostname=$(echo "$existing" | awk '{print $2}')
@@ -60,13 +78,17 @@ if [[ -n "$existing" ]]; then
     echo "$existing_hostname"
     exit 2
   fi
-  # Status is "failed" — allow re-provision with same hostname
-  echo "MAC ${mac} previously failed as ${existing_hostname} — re-provisioning" >&2
+  # Status is "failed" or "allocating" — allow re-provision with same hostname.
+  # "allocating" means a previous run allocated the hostname but did not finish
+  # provisioning; reuse the same hostname so the slot is not wasted.
+  echo "MAC ${mac} previously ${existing_status} as ${existing_hostname} — re-provisioning" >&2
   echo "$existing_hostname"
   exit 0
 fi
 
 # ── Allocate next ID ────────────────────────────────────────────────────────
+# "allocating" entries are counted alongside "provisioned" entries — they
+# already occupy their hostname slot.
 
 max_id=-1
 while IFS= read -r line; do
@@ -92,5 +114,12 @@ fi
 
 next_suffix=$(int_to_b36 $next_id)
 hostname="${model}-${next_suffix}"
+
+# Write a tentative entry BEFORE releasing the lock.  Any concurrent
+# allocate-hostname.sh invocation will see this entry and skip the slot.
+echo "${mac}  ${hostname}  allocating" >> "$registry"
+
+# Release lock
+exec 9>&-
 
 echo "$hostname"

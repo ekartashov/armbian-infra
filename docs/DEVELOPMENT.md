@@ -73,7 +73,13 @@ Result: the bootstrap MAC is **random but stable within a single boot session**.
 
 ### Hostname assignment
 
-Delegated entirely to Ansible. The `allocate-hostname.sh` script reads `base/inventory/hosts.ini`, finds the next available base-36 ID for the board model, and returns the hostname. The registry is append-only — entries are written only after a fully successful install.
+Delegated entirely to Ansible. The `allocate-hostname.sh` script reads `base/inventory/hosts.ini`, finds the next available base-36 ID for the board model, and returns the hostname.
+
+**Concurrency safety:** the script acquires an exclusive `flock(1)` lock on `${registry}.lock` before reading the registry, computing the next ID, and writing a tentative `allocating` entry. The lock is released only after the entry is written, so two concurrent invocations are guaranteed to see each other's in-progress allocation and will never produce duplicate hostnames.
+
+**Tentative entries:** immediately after computing a hostname the script appends a line like `aa:bb:cc:dd:ee:ff  opi5-00  allocating` to the registry. The `10-register.yml` task later updates this line (matched by MAC address via `lineinfile` regexp) to `provisioned` status. If provisioning fails after allocation the `allocating` entry remains in the registry; on the next run the script treats `allocating` the same as `failed` — the board re-provisions with the same previously-allocated hostname so the slot is not wasted.
+
+**Sequential provisioning:** `provision-base.yml` sets `serial: 1`, which ensures boards are provisioned one at a time even when multiple IPs are passed in the inventory string. This is the primary defence against shared-state races (hostname allocation, `/tmp` paths in `install-image.sh`, etc.). The `flock` locking is a second layer of protection. Do not remove `serial: 1` without auditing every shared-state concern first.
 
 Base-36 encoding: `[0-9A-Z][0-9A-Z]` = 1296 unique hosts per model. Format: `opi5-00`, `opi5-01`, ..., `opi5-09`, `opi5-0A`, ..., `opi5-ZZ`.
 

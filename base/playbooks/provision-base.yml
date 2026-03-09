@@ -25,6 +25,13 @@
   hosts: all
   become: true
   gather_facts: true
+  # serial: 1 ensures boards are provisioned one at a time even when multiple
+  # IPs are passed via the inventory string.  This is the primary defence
+  # against shared-state races (hostname allocation, /tmp paths in
+  # install-image.sh, etc.).  The hostname allocator also uses flock(1) as a
+  # second layer of protection, but sequential execution is the safest default.
+  # Do not remove serial: 1 without auditing every shared-state concern first.
+  serial: 1
 
   pre_tasks:
     # ── Resolve admin password hash ──────────────────────────────────────
