@@ -1,17 +1,24 @@
 ---
 # roles/armbian_base/tasks/03-partition.yml
-- name: Check if NVMe is already partitioned correctly
-  ansible.builtin.script:
-    cmd: "scripts/partition-nvme.sh --check --device '{{ nvme_device }}' --boot-size '{{ boot_partition_size_mb }}'"
-  register: _part_check
+- name: Upload partition script
+  ansible.builtin.copy:
+    src: scripts/partition-nvme.sh
+    dest: /tmp/partition-nvme.sh
+    mode: '0755'
   changed_when: false
-  failed_when: false
+
+- name: Check if NVMe is already partitioned correctly
+  ansible.builtin.command:
+    cmd: /tmp/partition-nvme.sh --check --device {{ nvme_device }} --boot-size {{ boot_partition_size_mb }}
+  register: partcheck
+  changed_when: false
+  failed_when: false          # now actually respected — no -tt, ControlMaster stays alive
 
 - name: Partition NVMe
-  ansible.builtin.script:
-    cmd: "scripts/partition-nvme.sh --apply --device '{{ nvme_device }}' --boot-size '{{ boot_partition_size_mb }}'"
-  when: _part_check.rc != 0
-  register: _part_apply
+  ansible.builtin.command:
+    cmd: /tmp/partition-nvme.sh --apply --device {{ nvme_device }} --boot-size {{ boot_partition_size_mb }}
+  when: partcheck.rc != 0
+  register: partapply
 
 - name: Record partition devices
   ansible.builtin.set_fact:
