@@ -1,18 +1,29 @@
 ---
 # roles/armbian_base/tasks/07-users.yml
 
+- name: Upload create-user script
+  ansible.builtin.copy:
+    src: scripts/create-user.sh
+    dest: /tmp/create-user.sh
+    mode: '0755'
+  changed_when: false
+
 - name: Create admin user and clean up image defaults
-  ansible.builtin.shell: |
-    {{ role_path }}/scripts/create-user.sh \
-      --staging '{{ staging_root }}' \
-      --user '{{ admin_user }}' \
-      --shell '{{ admin_shell }}' \
-      --groups '{{ admin_groups | join(",") }}' \
-      --pubkey '{{ admin_ssh_pubkey }}' \
-      <<< '{{ admin_password_hash }}'
+  ansible.builtin.shell:
+    cmd: >-
+      /tmp/create-user.sh
+      --staging {{ staging_root }}
+      --user {{ admin_user }}
+      --shell {{ admin_shell }}
+      --groups {{ admin_groups | join(',') }}
+      --pubkey "$ADMIN_PUBKEY"
+      --hash "$ADMIN_HASH"
   args:
     executable: /bin/bash
-  no_log: true
+  environment:
+    ADMIN_PUBKEY: "{{ admin_ssh_pubkey }}"
+    ADMIN_HASH: "{{ admin_password_hash }}"
+  no_log: false
 
 - name: Disable armbian-firstrun service
   ansible.builtin.file:
@@ -28,9 +39,7 @@
   ansible.builtin.shell: |
     set -euo pipefail
     rm -f {{ staging_root }}/etc/ssh/ssh_host_*
-    # Generate new keys via chroot so they match the target system's openssh
     chroot {{ staging_root }} dpkg-reconfigure openssh-server 2>/dev/null || {
-      # Fallback: generate directly if dpkg-reconfigure isn't available
       for type in rsa ecdsa ed25519; do
         ssh-keygen -t $type -f {{ staging_root }}/etc/ssh/ssh_host_${type}_key -N "" -q
       done
@@ -63,7 +72,6 @@
       ln -sf /lib/systemd/system/sshd.service \
         "${root}/etc/systemd/system/multi-user.target.wants/sshd.service"
     fi
-    # Remove socket activation (we want the daemon directly)
     rm -f "${root}/etc/systemd/system/sockets.target.wants/ssh.socket" 2>/dev/null || true
   args:
     executable: /bin/bash
