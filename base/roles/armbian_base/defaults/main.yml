@@ -7,10 +7,32 @@ nvme_device: "/dev/nvme0n1"
 boot_partition_size_mb: 512
 sbc_model: "opi5"
 staging_root: "/mnt/target"
+armbian_distro: "trixie"
+armbian_branch: "current"
+armbian_variant: "minimal"
+registry_file: "{{ playbook_dir }}/../inventory/hosts.ini"
+btrfs_subvolumes:
+  - { name: "@",          mount: "/" }
+  - { name: "@home",      mount: "/home" }
+  - { name: "@snapshots", mount: "/.snapshots" }
+  - { name: "@var_log",   mount: "/var/log" }
+  - { name: "@srv",       mount: "/srv" }
 btrfs_mount_options: "compress=zstd:1,noatime,ssd"
 btrbk_toplevel_mount: "/mnt/btrfs-root"
 enable_btrbk: true
 enable_hdmi_dummyplug: false
+hdmi_resolution: "1920x1080M-32@60D"
+hdmi_output: "HDMI-A-1"
 enable_golden_snapshot: true
 admin_user: "admin"
+admin_password_hash: ""
+admin_groups:
+  - sudo
 admin_shell: "/bin/bash"
+admin_ssh_pubkey: ""
+btrbk_root_preserve_min: "6h"
+btrbk_root_preserve: "48h 7d 4w"
+btrbk_home_preserve_min: "1d"
+btrbk_home_preserve: "7d 4w"
+btrbk_srv_preserve_min: "6h"
+btrbk_srv_preserve: "48h 7d 4w 3m"

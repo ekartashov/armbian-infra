@@ -42,7 +42,7 @@
       delegate_to: localhost
       become: false
       no_log: true
-      when: admin_password_hash == ""
+      when: (admin_password_hash | default('')) == ""
 
     - name: Use secrets file hash if available
       ansible.builtin.set_fact:
@@ -50,7 +50,7 @@
       run_once: true
       no_log: true
       when:
-        - admin_password_hash == ""
+        - (admin_password_hash | default('')) == ""
         - _secrets_password_hash | default('') != ""
 
     - name: Prompt for admin password if no hash available
@@ -62,7 +62,7 @@
       delegate_to: localhost
       become: false
       no_log: true
-      when: admin_password_hash == ""
+      when: (admin_password_hash | default('')) == ""
 
     - name: Hash the prompted password
       ansible.builtin.command:
@@ -76,7 +76,7 @@
       become: false
       no_log: true
       when:
-        - admin_password_hash == ""
+        - (admin_password_hash | default('')) == ""
         - _password_prompt is defined
         - _password_prompt.user_input | default('') != ""
       changed_when: false
@@ -87,7 +87,7 @@
       run_once: true
       no_log: true
       when:
-        - admin_password_hash == ""
+        - (admin_password_hash | default('')) == ""
         - _hashed is defined
         - _hashed.stdout | default('') != ""
 
@@ -99,7 +99,7 @@
           (b) pass via --extra-vars "admin_password_hash='$6$...'"
           (c) generate inline and save:
               echo "$pass" | scripts/gen-password-hash.sh --stdout > secrets/password.hash
-      when: admin_password_hash == ""
+      when: (admin_password_hash | default('')) == ""
 
     # ── Resolve SSH public key ───────────────────────────────────────────
     - name: Try reading SSH pubkey from secrets file
@@ -108,7 +108,7 @@
       run_once: true
       delegate_to: localhost
       become: false
-      when: admin_ssh_pubkey == ""
+      when: (admin_ssh_pubkey | default('')) == ""
 
     # ── Resolve image source for pull method ─────────────────────────────
     - name: Check for local base image on controller
