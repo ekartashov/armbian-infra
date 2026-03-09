@@ -59,7 +59,9 @@
 
     - name: Hash the prompted password
       ansible.builtin.command:
-        cmd: "openssl passwd -6 -stdin"
+        argv:
+          - "{{ playbook_dir }}/../../scripts/gen-password-hash.sh"
+          - "--stdout"
         stdin: "{{ _password_prompt.user_input }}"
       register: _hashed
       run_once: true
@@ -85,9 +87,11 @@
     - name: Fail if no password hash resolved
       ansible.builtin.fail:
         msg: >-
-          No admin password hash available. Provide one via:
-          --extra-vars "admin_password_hash='$6$...'"
-          or place it in secrets/password.hash
+          No admin password hash available. Options:
+          (a) run scripts/gen-password-hash.sh (writes secrets/password.hash, auto-read next run)
+          (b) pass via --extra-vars "admin_password_hash='$6$...'"
+          (c) generate inline and save:
+              echo "$pass" | scripts/gen-password-hash.sh --stdout > secrets/password.hash
       when: admin_password_hash == ""
 
     # ── Resolve SSH public key ───────────────────────────────────────────
