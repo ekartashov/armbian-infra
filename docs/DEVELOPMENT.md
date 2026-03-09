@@ -186,6 +186,62 @@ Rockchip RK3588 boot ROM uses the first 16 MiB of SD/eMMC for bootloader stages.
 
 `armbian-firstrun.service` does: SSH key regeneration, MAC randomization in armbianEnv.txt, UUID generation, board-specific hardware workarounds, hostname detection from device tree. On the installed NVMe system, we disable it entirely because we handle all of these ourselves. We also set `OPENSSHD_REGENERATE_HOST_KEYS=false` in `/etc/default/armbian-firstrun` as a belt-and-suspenders measure.
 
+### Boot troubleshooting
+
+If the board drops into an initramfs shell on first boot after provisioning, the following diagnostics apply.
+
+#### Symptom: `mount: No such file or directory` / empty mount point in fstab
+
+The Jinja2 `default()` filter **does not activate on empty strings** — it only triggers on undefined values. The fstab template uses `regex_replace('/$', '')` to strip trailing slashes from mount paths, which turns `/` into an empty string. Without the `true` parameter (`default('/', true)`), the root subvolume gets an empty mount point in `/etc/fstab` and the kernel cannot mount root.
+
+From the initramfs shell, confirm with:
+
+```
+cat /etc/fstab        # look for a line with an empty second column
+```
+
+Always use `default('<fallback>', true)` when the preceding filter can produce an empty string.
+
+#### Symptom: `run-init: opening console: No such file or directory`
+
+`/dev/console` does not exist in the target root. The provisioning script creates it with `mknod` if absent. If this reoccurs, check that `09-finalize.yml` ran without errors and that the staging root `/dev` was not wiped before the `mknod` step.
+
+#### Symptom: kernel panics with "no init found" / btrfs not recognised
+
+The initramfs doesn't include the `btrfs` kernel module. `update-initramfs` normally detects the root filesystem type from `/etc/fstab`; if fstab was wrong (see above) or `update-initramfs` failed silently, the module is omitted.
+
+`09-finalize.yml` now explicitly writes `btrfs` to `/etc/initramfs-tools/modules` before calling `update-initramfs`, and uses `update-initramfs -u -v` (without `|| true`) so any failure is fatal and visible.
+
+#### General debug procedure from the initramfs shell
+
+```sh
+# List available block devices
+ls /dev/nvme* /dev/sd* 2>/dev/null
+
+# Try to mount root manually
+mkdir /mnt/root
+mount -t btrfs -o subvol=@ /dev/nvme0n1p2 /mnt/root
+
+# Inspect fstab and init
+cat /mnt/root/etc/fstab
+ls /mnt/root/sbin/init /mnt/root/lib/systemd/systemd 2>/dev/null
+
+# Check initramfs module list
+cat /mnt/root/etc/initramfs-tools/modules
+```
+
+#### Boot readiness check
+
+After unmounting the staging tree, `09-finalize.yml` re-mounts the root subvolume read-only and verifies:
+
+- `/boot/initrd.img-*` exists
+- `/boot/vmlinuz-*` or `/boot/Image` exists
+- `/boot/armbianEnv.txt` exists
+- `/etc/fstab` is non-empty
+- `/sbin/init`, `/usr/sbin/init`, or `/lib/systemd/systemd` exists
+
+The playbook fails loudly if any of these are missing, so boot problems are caught at provision time rather than at the board's first reboot.
+
 ---
 
 ## Dependencies
