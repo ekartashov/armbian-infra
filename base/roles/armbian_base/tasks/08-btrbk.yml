@@ -4,6 +4,24 @@
 - name: Install btrbk in chroot
   ansible.builtin.shell: |
     set -euo pipefail
+
+    # Mount pseudo-filesystems needed for chroot apt
+    mount --bind /proc {{ staging_root }}/proc
+    mount --bind /sys  {{ staging_root }}/sys
+    mount --bind /dev  {{ staging_root }}/dev
+    mount --bind /dev/pts {{ staging_root }}/dev/pts
+
+    # Provide working DNS (copy as real file, not symlink)
+    rm -f {{ staging_root }}/etc/resolv.conf
+    cp /etc/resolv.conf {{ staging_root }}/etc/resolv.conf
+
+    trap "
+      umount {{ staging_root }}/dev/pts  2>/dev/null || true
+      umount {{ staging_root }}/dev      2>/dev/null || true
+      umount {{ staging_root }}/sys      2>/dev/null || true
+      umount {{ staging_root }}/proc     2>/dev/null || true
+    " EXIT
+
     if chroot {{ staging_root }} dpkg -l btrbk 2>/dev/null | grep -q '^ii'; then
       echo "already installed"
     else
@@ -13,32 +31,32 @@
     fi
   args:
     executable: /bin/bash
-  register: _btrbk_install
-  changed_when: "'already installed' not in _btrbk_install.stdout"
+  register: btrbk_install
+  changed_when: "'already installed' not in btrbk_install.stdout"
 
 - name: Create btrbk config directory
   ansible.builtin.file:
     path: "{{ staging_root }}/etc/btrbk"
     state: directory
-    mode: "0755"
+    mode: '0755'
 
 - name: Deploy btrbk configuration
   ansible.builtin.template:
     src: btrbk.conf.j2
     dest: "{{ staging_root }}/etc/btrbk/btrbk.conf"
-    mode: "0644"
+    mode: '0644'
 
 - name: Deploy btrbk systemd timer
   ansible.builtin.template:
     src: btrbk.timer.j2
     dest: "{{ staging_root }}/etc/systemd/system/btrbk.timer"
-    mode: "0644"
+    mode: '0644'
 
 - name: Deploy btrbk systemd service
   ansible.builtin.template:
     src: btrbk.service.j2
     dest: "{{ staging_root }}/etc/systemd/system/btrbk.service"
-    mode: "0644"
+    mode: '0644'
 
 - name: Enable btrbk timer
   ansible.builtin.file:
