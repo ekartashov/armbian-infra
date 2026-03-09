@@ -1,0 +1,19 @@
+# Downloaded images (large binaries)
+images/*/Armbian_*.img.xz
+images/*/Armbian_*.img.xz.sha
+images/*/Armbian_*.img.xz.asc
+
+# Patched images
+images/patched/*.img.xz
+images/patched/*.img
+
+# Cached catalog
+cache/
+
+# Secrets (keys, password hashes)
+secrets/
+
+# Lock files — tracked by default (reproducibility).
+# Uncomment to ignore:
+# images/*/.pull-lock
+# images/patched/*.patch-lock

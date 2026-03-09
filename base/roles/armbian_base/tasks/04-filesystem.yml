@@ -1,0 +1,44 @@
+---
+# roles/armbian_base/tasks/04-filesystem.yml
+- name: Check if btrfs filesystem exists on root partition
+  ansible.builtin.command:
+    cmd: "blkid -o value -s TYPE {{ root_partition }}"
+  register: _fs_type
+  changed_when: false
+  failed_when: false
+
+- name: Create ext4 on boot partition
+  ansible.builtin.command:
+    cmd: "mkfs.ext4 -F -L BOOT {{ boot_partition }}"
+  when: _fs_type.stdout != "btrfs"
+
+- name: Create btrfs on root partition
+  ansible.builtin.command:
+    cmd: "mkfs.btrfs -f -L ROOT {{ root_partition }}"
+  when: _fs_type.stdout != "btrfs"
+
+- name: Create btrfs subvolumes and mount staging tree
+  ansible.builtin.script:
+    cmd: >-
+      scripts/create-subvolumes.sh
+      --device '{{ root_partition }}'
+      --boot-device '{{ boot_partition }}'
+      --staging '{{ staging_root }}'
+      --toplevel '{{ btrbk_toplevel_mount }}'
+      --mount-options '{{ btrfs_mount_options }}'
+      --subvolumes '{{ btrfs_subvolumes | to_json }}'
+  register: _subvol_result
+
+- name: Record partition UUIDs
+  ansible.builtin.shell: |
+    echo "BOOT_UUID=$(blkid -o value -s UUID {{ boot_partition }})"
+    echo "ROOT_UUID=$(blkid -o value -s UUID {{ root_partition }})"
+  args:
+    executable: /bin/bash
+  register: _uuids
+  changed_when: false
+
+- name: Parse UUIDs
+  ansible.builtin.set_fact:
+    boot_uuid: "{{ _uuids.stdout_lines | select('match', '^BOOT_UUID=') | first | regex_replace('^BOOT_UUID=', '') }}"
+    root_uuid: "{{ _uuids.stdout_lines | select('match', '^ROOT_UUID=') | first | regex_replace('^ROOT_UUID=', '') }}"

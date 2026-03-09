@@ -1,0 +1,85 @@
+---
+# roles/armbian_base/tasks/01-preflight.yml
+- name: Verify NVMe device exists
+  ansible.builtin.stat:
+    path: "{{ nvme_device }}"
+  register: _nvme_stat
+
+- name: Fail if NVMe not found
+  ansible.builtin.fail:
+    msg: "NVMe device {{ nvme_device }} not found. Is the drive attached?"
+  when: not _nvme_stat.stat.exists
+
+- name: Verify target is actually NVMe (not SD/USB)
+  ansible.builtin.shell: |
+    set -euo pipefail
+    dev_base=$(basename "{{ nvme_device }}")
+    if [[ ! -d "/sys/block/${dev_base}/device" ]]; then
+      echo "FAIL: no sysfs entry"
+      exit 1
+    fi
+    # NVMe devices have a subsysnqn or transport file
+    if [[ -f "/sys/block/${dev_base}/device/subsysnqn" ]] || \
+       [[ "$(cat /sys/block/${dev_base}/device/transport 2>/dev/null)" == "pcie" ]]; then
+      echo "OK"
+    else
+      echo "FAIL: device does not look like NVMe"
+      exit 1
+    fi
+  args:
+    executable: /bin/bash
+  changed_when: false
+
+- name: Ensure required tools are available
+  ansible.builtin.shell: |
+    missing=()
+    for cmd in btrfs mkfs.btrfs mkfs.ext4 rsync parted partprobe wipefs blkid; do
+      command -v "$cmd" >/dev/null 2>&1 || missing+=("$cmd")
+    done
+    if [[ ${#missing[@]} -gt 0 ]]; then
+      echo "MISSING: ${missing[*]}"
+      exit 1
+    fi
+    echo "OK"
+  args:
+    executable: /bin/bash
+  changed_when: false
+
+- name: Verify we are running from bootstrap (overlay or SD)
+  ansible.builtin.shell: |
+    # Check for overlay mount or SD card root
+    if grep -q "overlayroot" /proc/mounts 2>/dev/null; then
+      echo "overlay"
+    elif findmnt -n -o SOURCE / | grep -q "mmcblk"; then
+      echo "sdcard"
+    else
+      echo "unknown"
+    fi
+  args:
+    executable: /bin/bash
+  register: _boot_source
+  changed_when: false
+
+- name: Warn if boot source is unexpected
+  ansible.builtin.debug:
+    msg: >-
+      WARNING: Root filesystem does not appear to be overlay or SD card
+      (detected: {{ _boot_source.stdout }}). Proceeding anyway — the target
+      NVMe will be wiped.
+  when: _boot_source.stdout == "unknown"
+
+- name: Gather MAC address fact
+  ansible.builtin.set_fact:
+    board_mac: "{{ ansible_default_ipv4.macaddress | lower }}"
+
+- name: Display provisioning summary
+  ansible.builtin.debug:
+    msg: |
+      ═══ Provisioning Summary ═══
+      Host IP:     {{ ansible_host | default(inventory_hostname) }}
+      MAC:         {{ board_mac }}
+      Model:       {{ sbc_model }}
+      NVMe:        {{ nvme_device }}
+      Method:      {{ install_method }}
+      HDMI:        {{ enable_hdmi_dummyplug }}
+      btrbk:       {{ enable_btrbk }}

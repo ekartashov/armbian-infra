@@ -1,0 +1,32 @@
+---
+# roles/armbian_base/tasks/main.yml
+- name: "Phase 1: Preflight checks"
+  ansible.builtin.include_tasks: 01-preflight.yml
+
+- name: "Phase 2: Hostname assignment"
+  ansible.builtin.include_tasks: 02-hostname.yml
+
+- name: "Phase 3: NVMe partitioning"
+  ansible.builtin.include_tasks: 03-partition.yml
+
+- name: "Phase 4: Btrfs filesystem and subvolumes"
+  ansible.builtin.include_tasks: 04-filesystem.yml
+
+- name: "Phase 5: System installation"
+  ansible.builtin.include_tasks: 05-install.yml
+
+- name: "Phase 6: System configuration"
+  ansible.builtin.include_tasks: 06-configure.yml
+
+- name: "Phase 7: User management and image cleanup"
+  ansible.builtin.include_tasks: 07-users.yml
+
+- name: "Phase 8: Snapshot infrastructure (btrbk)"
+  ansible.builtin.include_tasks: 08-btrbk.yml
+  when: enable_btrbk | bool
+
+- name: "Phase 9: Finalization"
+  ansible.builtin.include_tasks: 09-finalize.yml
+
+- name: "Phase 10: Host registration"
+  ansible.builtin.include_tasks: 10-register.yml

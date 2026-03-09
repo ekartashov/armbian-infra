@@ -1,0 +1,111 @@
+---
+# roles/armbian_base/tasks/05-install.yml
+
+# ── Copy method: rsync live bootstrap onto target ────────────────────────────
+- name: "Install (copy): rsync live system to target"
+  when: install_method == "copy"
+  block:
+    - name: Rsync rootfs to target
+      ansible.builtin.shell: |
+        rsync -aAXHx \
+          --exclude='/dev/*' --exclude='/proc/*' --exclude='/sys/*' \
+          --exclude='/tmp/*' --exclude='/run/*' --exclude='/mnt/*' \
+          --exclude='/media/*' --exclude='/lost+found' --exclude='/boot/*' \
+          / {{ staging_root }}/
+      args:
+        executable: /bin/bash
+
+    - name: Rsync boot to target
+      ansible.builtin.shell: |
+        rsync -aAXH /boot/ {{ staging_root }}/boot/
+      args:
+        executable: /bin/bash
+
+# ── Pull method: fresh image (local-first, then download) ────────────────────
+- name: "Install (pull): deploy fresh Armbian image"
+  when: install_method == "pull"
+  block:
+    # Resolve which board slug maps to which image directory
+    - name: Map sbc_model to board slug
+      ansible.builtin.set_fact:
+        _board_slug: "{{ sbc_model | regex_replace('^opi5p$', 'orangepi5-plus') | regex_replace('^opi5$', 'orangepi5') }}"
+
+    # Try to find a local image on the controller that matches
+    - name: Check for pull-lock on controller
+      ansible.builtin.slurp:
+        src: "{{ playbook_dir }}/../../images/{{ _board_slug }}/.pull-lock"
+      register: _pull_lock_raw
+      delegate_to: localhost
+      become: false
+      failed_when: false
+
+    - name: Parse pull-lock if found
+      ansible.builtin.set_fact:
+        _local_image_available: "{{ _pull_lock_raw is succeeded }}"
+        _locked_filename: >-
+          {{ (_pull_lock_raw.content | default('') | b64decode |
+              regex_search('ARMBIAN_LOCKED_FILENAME="([^"]+)"', '\1') | default([''], true) | first) }}
+        _locked_version: >-
+          {{ (_pull_lock_raw.content | default('') | b64decode |
+              regex_search('ARMBIAN_LOCKED_VERSION="([^"]+)"', '\1') | default([''], true) | first) }}
+        _locked_url: >-
+          {{ (_pull_lock_raw.content | default('') | b64decode |
+              regex_search('ARMBIAN_LOCKED_FILE_URL="([^"]+)"', '\1') | default([''], true) | first) }}
+
+    # Check if version matches what we want (if pinned)
+    - name: Check version match
+      ansible.builtin.set_fact:
+        _use_local: >-
+          {{ _local_image_available | bool and
+             _locked_filename | length > 0 and
+             (armbian_version | default('') == '' or armbian_version | default('') == _locked_version) }}
+
+    # Check if the actual file exists on the controller
+    - name: Check local image file exists
+      ansible.builtin.stat:
+        path: "{{ playbook_dir }}/../../images/{{ _board_slug }}/{{ _locked_filename }}"
+      register: _local_file
+      delegate_to: localhost
+      become: false
+      when: _use_local | bool
+
+    - name: Update local availability
+      ansible.builtin.set_fact:
+        _use_local: "{{ _use_local | bool and (_local_file.stat.exists | default(false)) }}"
+
+    # Stream from controller if available
+    - name: "Stream image from controller (local-first)"
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../../images/{{ _board_slug }}/{{ _locked_filename }}"
+        dest: "/tmp/armbian-base.img.xz"
+      when: _use_local | bool
+
+    # Otherwise download on the target directly
+    - name: "Download image on target"
+      ansible.builtin.shell: |
+        set -euo pipefail
+        url="{{ _locked_url }}"
+        if [[ -z "$url" ]]; then
+          echo "ERROR: no image URL available — run pull-image.sh on the controller first" >&2
+          exit 1
+        fi
+        curl -fSL --retry 3 --retry-delay 5 -o /tmp/armbian-base.img.xz "$url"
+      args:
+        executable: /bin/bash
+      when: not (_use_local | bool)
+
+    # Extract and rsync from the image
+    - name: Deploy image to target filesystem
+      ansible.builtin.script:
+        cmd: "scripts/install-image.sh --image /tmp/armbian-base.img.xz --staging '{{ staging_root }}'"
+      register: _install_result
+
+    - name: Clean up downloaded image
+      ansible.builtin.file:
+        path: "/tmp/armbian-base.img.xz"
+        state: absent
+
+    - name: Clean up decompressed image
+      ansible.builtin.file:
+        path: "/tmp/armbian-base.img"
+        state: absent

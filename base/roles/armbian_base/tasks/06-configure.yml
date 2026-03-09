@@ -1,0 +1,40 @@
+---
+# roles/armbian_base/tasks/06-configure.yml
+
+- name: Deploy fstab
+  ansible.builtin.template:
+    src: fstab.j2
+    dest: "{{ staging_root }}/etc/fstab"
+    mode: "0644"
+
+- name: Configure armbianEnv.txt
+  ansible.builtin.script:
+    cmd: >-
+      scripts/configure-boot.sh
+      --staging '{{ staging_root }}'
+      --root-uuid '{{ root_uuid }}'
+      --mac '{{ board_mac }}'
+      --hdmi '{{ enable_hdmi_dummyplug }}'
+      --hdmi-resolution '{{ hdmi_resolution }}'
+      --hdmi-output '{{ hdmi_output }}'
+
+- name: Set hostname
+  ansible.builtin.copy:
+    content: "{{ target_hostname }}\n"
+    dest: "{{ staging_root }}/etc/hostname"
+    mode: "0644"
+
+- name: Update /etc/hosts
+  ansible.builtin.lineinfile:
+    path: "{{ staging_root }}/etc/hosts"
+    regexp: '^127\.0\.1\.1'
+    line: "127.0.1.1\t{{ target_hostname }}"
+    state: present
+
+- name: Reset machine-id (regenerated on first real boot)
+  ansible.builtin.shell: |
+    truncate -s 0 {{ staging_root }}/etc/machine-id
+    rm -f {{ staging_root }}/var/lib/dbus/machine-id
+  args:
+    executable: /bin/bash
+  changed_when: true

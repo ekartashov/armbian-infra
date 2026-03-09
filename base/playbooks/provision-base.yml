@@ -1,0 +1,109 @@
+---
+# base/playbooks/provision-base.yml
+# Provisions an Orange Pi from armbian-bootstrap (SD overlay) to armbian-base (NVMe btrfs).
+#
+# Usage:
+#   # Single host by IP (typical — board discovered via ARP/DHCP):
+#   ansible-playbook -i "10.42.0.5," -u admin \
+#     --private-key ../secrets/ssh/id_ed25519 \
+#     playbooks/provision-base.yml \
+#     --extra-vars "sbc_model=opi5"
+#
+#   # With explicit password hash:
+#   ansible-playbook -i "10.42.0.5," -u admin \
+#     --private-key ../secrets/ssh/id_ed25519 \
+#     playbooks/provision-base.yml \
+#     --extra-vars "sbc_model=opi5 admin_password_hash='\$6\$...'"
+#
+#   # Multiple boards (sequentially — same password for all):
+#   ansible-playbook -i "10.42.0.5,10.42.0.6," -u admin \
+#     --private-key ../secrets/ssh/id_ed25519 \
+#     playbooks/provision-base.yml \
+#     --extra-vars "sbc_model=opi5"
+
+- name: Provision armbian-base on Orange Pi
+  hosts: all
+  become: true
+  gather_facts: true
+
+  pre_tasks:
+    # ── Resolve admin password hash ──────────────────────────────────────
+    - name: Try reading password hash from secrets file
+      ansible.builtin.set_fact:
+        _secrets_password_hash: "{{ lookup('file', playbook_dir + '/../../secrets/password.hash', errors='ignore') | default('') }}"
+      run_once: true
+      delegate_to: localhost
+      become: false
+      when: admin_password_hash == ""
+
+    - name: Use secrets file hash if available
+      ansible.builtin.set_fact:
+        admin_password_hash: "{{ _secrets_password_hash }}"
+      run_once: true
+      when:
+        - admin_password_hash == ""
+        - _secrets_password_hash | default('') != ""
+
+    - name: Prompt for admin password if no hash available
+      ansible.builtin.pause:
+        prompt: "Enter admin password for installed system (all hosts)"
+        echo: false
+      register: _password_prompt
+      run_once: true
+      delegate_to: localhost
+      become: false
+      when: admin_password_hash == ""
+
+    - name: Hash the prompted password
+      ansible.builtin.command:
+        cmd: "openssl passwd -6 -stdin"
+        stdin: "{{ _password_prompt.user_input }}"
+      register: _hashed
+      run_once: true
+      delegate_to: localhost
+      become: false
+      no_log: true
+      when:
+        - admin_password_hash == ""
+        - _password_prompt is defined
+        - _password_prompt.user_input | default('') != ""
+      changed_when: false
+
+    - name: Set password hash from prompt
+      ansible.builtin.set_fact:
+        admin_password_hash: "{{ _hashed.stdout }}"
+      run_once: true
+      when:
+        - admin_password_hash == ""
+        - _hashed is defined
+        - _hashed.stdout | default('') != ""
+
+    - name: Fail if no password hash resolved
+      ansible.builtin.fail:
+        msg: >-
+          No admin password hash available. Provide one via:
+          --extra-vars "admin_password_hash='$6$...'"
+          or place it in secrets/password.hash
+      when: admin_password_hash == ""
+
+    # ── Resolve SSH public key ───────────────────────────────────────────
+    - name: Try reading SSH pubkey from secrets file
+      ansible.builtin.set_fact:
+        admin_ssh_pubkey: "{{ lookup('file', playbook_dir + '/../../secrets/ssh/id_ed25519.pub', errors='ignore') | default('') }}"
+      run_once: true
+      delegate_to: localhost
+      become: false
+      when: admin_ssh_pubkey == ""
+
+    # ── Resolve image source for pull method ─────────────────────────────
+    - name: Check for local base image on controller
+      ansible.builtin.stat:
+        path: "{{ playbook_dir }}/../../images/{{ sbc_model | regex_replace('^opi5p$', 'orangepi5-plus') | regex_replace('^opi5$', 'orangepi5') }}"
+      register: _local_image_dir
+      delegate_to: localhost
+      become: false
+      run_once: true
+      when: install_method == "pull"
+
+  roles:
+    - armbian_base

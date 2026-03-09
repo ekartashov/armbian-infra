@@ -1,0 +1,5 @@
+---
+# roles/armbian_base/handlers/main.yml
+# Registration is handled directly in 10-register.yml via delegate_to: localhost
+# rather than as a handler, because handlers fire per-host and we need
+# controller-side file writes only on full playbook success.

@@ -1,0 +1,48 @@
+---
+# roles/armbian_base/tasks/08-btrbk.yml
+
+- name: Install btrbk in chroot
+  ansible.builtin.shell: |
+    set -euo pipefail
+    if chroot {{ staging_root }} dpkg -l btrbk 2>/dev/null | grep -q '^ii'; then
+      echo "already installed"
+    else
+      chroot {{ staging_root }} apt-get update -qq
+      chroot {{ staging_root }} apt-get install -y --no-install-recommends btrbk
+      chroot {{ staging_root }} apt-get clean
+    fi
+  args:
+    executable: /bin/bash
+  register: _btrbk_install
+  changed_when: "'already installed' not in _btrbk_install.stdout"
+
+- name: Create btrbk config directory
+  ansible.builtin.file:
+    path: "{{ staging_root }}/etc/btrbk"
+    state: directory
+    mode: "0755"
+
+- name: Deploy btrbk configuration
+  ansible.builtin.template:
+    src: btrbk.conf.j2
+    dest: "{{ staging_root }}/etc/btrbk/btrbk.conf"
+    mode: "0644"
+
+- name: Deploy btrbk systemd timer
+  ansible.builtin.template:
+    src: btrbk.timer.j2
+    dest: "{{ staging_root }}/etc/systemd/system/btrbk.timer"
+    mode: "0644"
+
+- name: Deploy btrbk systemd service
+  ansible.builtin.template:
+    src: btrbk.service.j2
+    dest: "{{ staging_root }}/etc/systemd/system/btrbk.service"
+    mode: "0644"
+
+- name: Enable btrbk timer
+  ansible.builtin.file:
+    src: /etc/systemd/system/btrbk.timer
+    dest: "{{ staging_root }}/etc/systemd/system/timers.target.wants/btrbk.timer"
+    state: link
+    force: true

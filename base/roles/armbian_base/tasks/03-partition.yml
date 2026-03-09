@@ -1,0 +1,19 @@
+---
+# roles/armbian_base/tasks/03-partition.yml
+- name: Check if NVMe is already partitioned correctly
+  ansible.builtin.script:
+    cmd: "scripts/partition-nvme.sh --check --device '{{ nvme_device }}' --boot-size '{{ boot_partition_size_mb }}'"
+  register: _part_check
+  changed_when: false
+  failed_when: false
+
+- name: Partition NVMe
+  ansible.builtin.script:
+    cmd: "scripts/partition-nvme.sh --apply --device '{{ nvme_device }}' --boot-size '{{ boot_partition_size_mb }}'"
+  when: _part_check.rc != 0
+  register: _part_apply
+
+- name: Record partition devices
+  ansible.builtin.set_fact:
+    boot_partition: "{{ nvme_device }}p1"
+    root_partition: "{{ nvme_device }}p2"

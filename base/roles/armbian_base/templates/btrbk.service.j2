@@ -1,0 +1,8 @@
+[Unit]
+Description=btrbk snapshot and cleanup
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/btrbk -q run
+Nice=19
+IOSchedulingClass=idle

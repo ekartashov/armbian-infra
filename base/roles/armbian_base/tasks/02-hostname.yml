@@ -1,0 +1,22 @@
+---
+# roles/armbian_base/tasks/02-hostname.yml
+- name: Allocate hostname from MAC registry
+  ansible.builtin.script:
+    cmd: "scripts/allocate-hostname.sh --mac '{{ board_mac }}' --model '{{ sbc_model }}' --registry '{{ registry_file }}'"
+  register: _hostname_result
+  delegate_to: localhost
+  become: false
+  changed_when: false
+
+- name: Parse allocated hostname
+  ansible.builtin.set_fact:
+    target_hostname: "{{ _hostname_result.stdout_lines | last }}"
+
+- name: Fail if hostname allocation failed
+  ansible.builtin.fail:
+    msg: "{{ _hostname_result.stderr }}"
+  when: _hostname_result.rc != 0
+
+- name: Display assigned hostname
+  ansible.builtin.debug:
+    msg: "Board {{ board_mac }} → {{ target_hostname }}"

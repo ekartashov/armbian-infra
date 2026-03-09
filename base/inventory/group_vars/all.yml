@@ -1,0 +1,65 @@
+# base/inventory/group_vars/all.yml — defaults for armbian-base provisioning
+# Override at runtime: ansible-playbook ... --extra-vars "key=value"
+
+# ── Installation ────────────────────────────────────────────────────────────
+
+# "pull" = download fresh Armbian image (local-first if available on controller)
+# "copy" = rsync the live bootstrap OS onto the target
+install_method: "pull"
+
+# For install_method=pull: image selection (mirrors config/defaults.env semantics)
+armbian_distro: "trixie"
+armbian_branch: "current"
+armbian_variant: "minimal"
+# armbian_version: ""           # empty = use whatever pull-lock resolved
+
+# ── Target device ───────────────────────────────────────────────────────────
+
+nvme_device: "/dev/nvme0n1"
+boot_partition_size_mb: 512
+
+# ── Board identity ──────────────────────────────────────────────────────────
+
+sbc_model: "opi5"               # "opi5" or "opi5p" — hostname prefix
+registry_file: "{{ playbook_dir }}/../inventory/hosts.ini"
+
+# ── Btrfs ───────────────────────────────────────────────────────────────────
+
+btrfs_subvolumes:
+  - { name: "@",          mount: "/" }
+  - { name: "@home",      mount: "/home" }
+  - { name: "@snapshots", mount: "/.snapshots" }
+  - { name: "@var_log",   mount: "/var/log" }
+  - { name: "@srv",       mount: "/srv" }
+
+btrfs_mount_options: "compress=zstd:1,noatime,ssd"
+
+# ── Boot ────────────────────────────────────────────────────────────────────
+
+enable_hdmi_dummyplug: false
+hdmi_resolution: "1920x1080M-32@60D"
+hdmi_output: "HDMI-A-1"
+
+# ── User ────────────────────────────────────────────────────────────────────
+
+admin_user: "admin"
+admin_password_hash: ""
+admin_groups:
+  - sudo
+admin_shell: "/bin/bash"
+admin_ssh_pubkey: ""            # if empty, read from secrets/ssh/id_ed25519.pub
+
+# ── Snapshots ───────────────────────────────────────────────────────────────
+
+enable_btrbk: true
+btrbk_root_preserve_min: "6h"
+btrbk_root_preserve: "48h 7d 4w"
+btrbk_home_preserve_min: "1d"
+btrbk_home_preserve: "7d 4w"
+btrbk_srv_preserve_min: "6h"
+btrbk_srv_preserve: "48h 7d 4w 3m"
+btrbk_toplevel_mount: "/mnt/btrfs-root"
+
+# ── Feature toggles ────────────────────────────────────────────────────────
+
+enable_golden_snapshot: true

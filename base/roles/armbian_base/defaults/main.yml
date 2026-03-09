@@ -1,0 +1,16 @@
+---
+# roles/armbian_base/defaults/main.yml
+# These are overridden by inventory/group_vars/all.yml — keep in sync.
+
+install_method: "pull"
+nvme_device: "/dev/nvme0n1"
+boot_partition_size_mb: 512
+sbc_model: "opi5"
+staging_root: "/mnt/target"
+btrfs_mount_options: "compress=zstd:1,noatime,ssd"
+btrbk_toplevel_mount: "/mnt/btrfs-root"
+enable_btrbk: true
+enable_hdmi_dummyplug: false
+enable_golden_snapshot: true
+admin_user: "admin"
+admin_shell: "/bin/bash"

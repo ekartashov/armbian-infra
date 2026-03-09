@@ -1,0 +1,10 @@
+---
+# roles/armbian_base/tasks/10-register.yml
+- name: Register host in MAC→hostname registry
+  ansible.builtin.lineinfile:
+    path: "{{ registry_file }}"
+    line: "{{ board_mac }}  {{ target_hostname }}  provisioned"
+    regexp: "^{{ board_mac | regex_escape() }}\\s"
+    state: present
+  delegate_to: localhost
+  become: false

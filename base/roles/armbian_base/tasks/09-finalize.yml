@@ -1,0 +1,95 @@
+---
+# roles/armbian_base/tasks/09-finalize.yml
+
+- name: Clean apt cache in target
+  ansible.builtin.shell: |
+    chroot {{ staging_root }} apt-get clean 2>/dev/null || true
+    rm -rf {{ staging_root }}/var/lib/apt/lists/* 2>/dev/null || true
+  args:
+    executable: /bin/bash
+  changed_when: true
+
+- name: Update initramfs (ensure btrfs modules are included)
+  ansible.builtin.shell: |
+    set -euo pipefail
+    # Bind mounts needed for chroot initramfs generation
+    mount --bind /proc {{ staging_root }}/proc
+    mount --bind /sys  {{ staging_root }}/sys
+    mount --bind /dev  {{ staging_root }}/dev
+    # /var/tmp needs space for mkinitramfs scratch
+    tmpdir=$(mktemp -d)
+    mount --bind "$tmpdir" {{ staging_root }}/var/tmp
+
+    chroot {{ staging_root }} update-initramfs -u 2>&1 || true
+
+    umount {{ staging_root }}/var/tmp
+    rmdir "$tmpdir"
+    umount {{ staging_root }}/dev
+    umount {{ staging_root }}/sys
+    umount {{ staging_root }}/proc
+  args:
+    executable: /bin/bash
+  changed_when: true
+
+- name: Verify armbianEnv.txt configuration
+  ansible.builtin.shell: |
+    set -euo pipefail
+    env_file="{{ staging_root }}/boot/armbianEnv.txt"
+    errors=()
+    grep -q "rootfstype=btrfs" "$env_file"      || errors+=("rootfstype not set to btrfs")
+    grep -q "rootflags=subvol=@" "$env_file"     || errors+=("rootflags missing subvol=@")
+    grep -q "rootdev=UUID=" "$env_file"           || errors+=("rootdev UUID not set")
+    grep -q "ethaddr={{ board_mac }}" "$env_file" || errors+=("ethaddr not fixed to {{ board_mac }}")
+    if [[ ${#errors[@]} -gt 0 ]]; then
+      printf "VERIFY FAILED: %s\n" "${errors[@]}" >&2
+      exit 1
+    fi
+    echo "OK: armbianEnv.txt verified"
+  args:
+    executable: /bin/bash
+  changed_when: false
+
+- name: Take golden image snapshot
+  ansible.builtin.shell: |
+    set -euo pipefail
+    snap_path="{{ btrbk_toplevel_mount }}/@snapshots/root.golden"
+    if btrfs subvolume show "$snap_path" >/dev/null 2>&1; then
+      echo "golden snapshot already exists — skipping"
+    else
+      btrfs subvolume snapshot -r \
+        "{{ btrbk_toplevel_mount }}/@" \
+        "$snap_path"
+      echo "golden snapshot created"
+    fi
+  args:
+    executable: /bin/bash
+  when: enable_golden_snapshot | bool
+  register: _golden
+  changed_when: "'created' in _golden.stdout"
+
+- name: Unmount all staging mounts
+  ansible.builtin.shell: |
+    set -euo pipefail
+    # Unmount subvolumes in reverse depth order
+    for mp in $(findmnt -R -n -o TARGET {{ staging_root }} | sort -r); do
+      umount "$mp" 2>/dev/null || true
+    done
+    # Unmount toplevel
+    umount {{ btrbk_toplevel_mount }} 2>/dev/null || true
+    echo "unmounted"
+  args:
+    executable: /bin/bash
+  changed_when: true
+
+- name: Display completion summary
+  ansible.builtin.debug:
+    msg: |
+      ═══ Provisioning Complete ═══
+      Hostname:    {{ target_hostname }}
+      MAC:         {{ board_mac }}
+      Boot UUID:   {{ boot_uuid }}
+      Root UUID:   {{ root_uuid }}
+      Method:      {{ install_method }}
+
+      Next: remove the SD card and reboot. The board will boot from NVMe as {{ target_hostname }}.
+      SSH: ssh {{ admin_user }}@{{ target_hostname }}

@@ -1,0 +1,21 @@
+# templates/sshd_config — deployed by patch-image.sh
+# Key-only auth, no root login. Ansible-ready.
+
+Port 22
+AddressFamily any
+ListenAddress 0.0.0.0
+ListenAddress ::
+
+PermitRootLogin no
+PubkeyAuthentication yes
+PasswordAuthentication no
+ChallengeResponseAuthentication no
+KbdInteractiveAuthentication no
+
+UsePAM yes
+
+X11Forwarding no
+PrintMotd no
+
+AcceptEnv LANG LC_*
+Subsystem sftp /usr/lib/openssh/sftp-server
