@@ -32,7 +32,7 @@
 
 - name: Ensure required tools are available
   ansible.builtin.script:
-    cmd: scripts/check-tools.sh
+    cmd: "scripts/check-tools.sh btrfs mkfs.btrfs mkfs.ext4 rsync parted partprobe wipefs blkid sgdisk"
   changed_when: false
 
 - name: Verify we are running from bootstrap (overlay or SD)
