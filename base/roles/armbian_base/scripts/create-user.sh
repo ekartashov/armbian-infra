@@ -57,7 +57,7 @@ IFS=',' read -ra grp_list <<< "$groups"
 for grp in "${grp_list[@]}"; do
   if grep -q "^${grp}:" "${staging}/etc/group"; then
     # Check if already a member
-    if ! grep -q "^${grp}:.*:.*${user}" "${staging}/etc/group"; then
+    if ! grep -qE "^${grp}:([^:]*:){2}(.*,)?${user}(,.*)?$" "${staging}/etc/group"; then
       if grep -q "^${grp}:[^:]*:[^:]*:$" "${staging}/etc/group"; then
         sed -i "s/^${grp}:\([^:]*\):\([^:]*\):$/\0${user}/" "${staging}/etc/group"
       else
