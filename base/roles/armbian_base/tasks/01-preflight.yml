@@ -64,12 +64,12 @@
 
 - name: Display provisioning summary
   ansible.builtin.debug:
-    msg: |
-      ═══ Provisioning Summary ═══
-      Host IP:     {{ ansible_host | default(inventory_hostname) }}
-      MAC:         {{ board_mac }}
-      Model:       {{ sbc_model }}
-      NVMe:        {{ nvme_device }}
-      Method:      {{ install_method }}
-      HDMI:        {{ enable_hdmi_dummyplug }}
-      btrbk:       {{ enable_btrbk }}
+    msg:
+      - "═══ Provisioning Summary ═══"
+      - "Host / IP:   {{ ansible_host }} ({{ inventory_hostname }})"
+      - "MAC:         {{ board_mac }}"
+      - "Model:       {{ sbc_model }}"
+      - "NVMe:        {{ nvme_device }}"
+      - "Method:      {{ install_method }}"
+      - "HDMI:        {{ enable_hdmi_dummyplug }}"
+      - "btrbk:       {{ enable_btrbk }}"

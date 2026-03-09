@@ -70,13 +70,13 @@
 
 - name: Display completion summary
   ansible.builtin.debug:
-    msg: |
-      ═══ Provisioning Complete ═══
-      Hostname:    {{ target_hostname }}
-      MAC:         {{ board_mac }}
-      Boot UUID:   {{ boot_uuid }}
-      Root UUID:   {{ root_uuid }}
-      Method:      {{ install_method }}
-
-      Next: remove the SD card and reboot. The board will boot from NVMe as {{ target_hostname }}.
-      SSH: ssh {{ admin_user }}@{{ target_hostname }}
+    msg:
+      - "═══ Provisioning Complete ═══"
+      - "Hostname:    {{ target_hostname }}"
+      - "MAC:         {{ board_mac }}"
+      - "Boot UUID:   {{ boot_uuid }}"
+      - "Root UUID:   {{ root_uuid }}"
+      - "Method:      {{ install_method }}"
+      - ""
+      - "Next: remove the SD card and reboot. The board will boot from NVMe as {{ target_hostname }}."
+      - "SSH: ssh {{ admin_user }}@{{ target_hostname }}"
